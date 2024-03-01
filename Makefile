@@ -70,7 +70,6 @@ clean: db-terminate
 
 # use cargo watch to reload the server when changes have been made
 watch-server:
-	cd server && \
 	export RUST_LOG=info PORT=8080 && \
 	cargo watch -x 'run --bin server server'
 

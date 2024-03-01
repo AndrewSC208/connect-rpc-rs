@@ -1,4 +1,2 @@
-credentials.json
-terraform.tfvars
 target/
 .env

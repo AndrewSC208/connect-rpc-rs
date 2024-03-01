@@ -3,25 +3,16 @@ use std::env;
 
 use dotenv::dotenv;
 use clap::{Parser, Subcommand};
-use sqlx::{
-    Pool, Postgres
-};
-
-use axum_session::{SessionStore, SessionPgPool};
+use tower_http::cors::CorsLayer;
 
 use crate::common::router;
-use crate::common::database;
-use crate::common::session;
 
 ///////////////////////////////
 /// ******* RUNTIME ******* ///
 ///////////////////////////////
 
-///
 pub struct Runtime {
     socket_address: Option<SocketAddr>,
-    database_connection: Option<Pool<Postgres>>,
-    session_store: Option<SessionStore<SessionPgPool>>,
 }
 
 type RuntimeResult<T> = std::result::Result<T, RuntimeError>;
@@ -46,8 +37,6 @@ impl Runtime {
     pub fn new () -> Runtime {
         Runtime { 
             socket_address: None, 
-            database_connection: None,
-            session_store: None,
         }
     }
 
@@ -77,25 +66,22 @@ impl Runtime {
         let port = env::var("PORT").expect("PORT environment variable not set");
         let ip = IpAddr::V4(Ipv4Addr::new(0,0,0,0));
         let socket_address = SocketAddr::new(ip, port.parse::<u16>().unwrap());
-        let database_connection = database::connect().await;
-        let sessions = session::new(database_connection.clone()).await; 
         
         Ok(Runtime {
             socket_address: Some(socket_address), 
-            database_connection: Some(database_connection),
-            session_store: Some(sessions),
         })
     }
 
     pub async fn execute(self) {
-        let dbp = self.database_connection.unwrap();
-        let ses = self.session_store.unwrap();
-        let app = router::new(dbp, ses.clone()).await;
-        let svc = app.into_make_service();
-        let lst = self.socket_address.unwrap();
+        let app = router::new().await;
+        let adr = self.socket_address.unwrap();
 
-        let _ = axum::Server::bind(&lst).
-            serve(svc).
-            await;
+        match tokio::net::TcpListener::bind(adr).await {
+            Ok(l) => {
+                println!("starting server");
+                axum::serve(l, app.layer(CorsLayer::very_permissive())).await.unwrap();
+            },
+            Err(e) => println!("{}", e)
+        }
     }    
 }
